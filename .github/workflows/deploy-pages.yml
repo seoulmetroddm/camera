@@ -32,11 +32,10 @@ jobs:
       - name: 의존성 설치
         run: npm ci
 
-      # GITHUB_PAGES=true일 때만 next.config.ts가 /camera 서브경로(basePath)를 붙인다.
+      # 커스텀 도메인은 루트(/)에서 서빙되므로 basePath를 붙이지 않는다.
+      # (계정.github.io/camera/ 같은 서브경로로 되돌아갈 경우에만 GITHUB_PAGES: "true"를 다시 넣는다.)
       - name: 정적 빌드
         run: npm run build
-        env:
-          GITHUB_PAGES: "true"
 
       - uses: actions/upload-pages-artifact@v3
         with:
