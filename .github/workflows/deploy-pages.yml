@@ -26,16 +26,19 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - uses: actions/configure-pages@v5
+      # 이 액션은 항상 GITHUB_PAGES=true를 설정하므로(커스텀 도메인 여부와 무관) 그 값 대신
+      # outputs.base_path(커스텀 도메인이면 "", 프로젝트 서브경로면 "/camera")를 직접 사용한다.
+      - id: pages
+        uses: actions/configure-pages@v5
 
       # postinstall(scripts/copy-ort-wasm.mjs)이 onnxruntime wasm을 public/ort/로 복사한다.
       - name: 의존성 설치
         run: npm ci
 
-      # 커스텀 도메인은 루트(/)에서 서빙되므로 basePath를 붙이지 않는다.
-      # (계정.github.io/camera/ 같은 서브경로로 되돌아갈 경우에만 GITHUB_PAGES: "true"를 다시 넣는다.)
       - name: 정적 빌드
         run: npm run build
+        env:
+          NEXT_BASE_PATH: ${{ steps.pages.outputs.base_path }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
