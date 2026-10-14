@@ -51,6 +51,11 @@ export interface Slot {
   blurRegions: BlurRegion[];
   /** 배경 제거 알파 마스크. 알파값이 곧 피사체 확률이다. */
   mask: HTMLCanvasElement | null;
+  /**
+   * 마스크가 덮는 영역(원본 좌표, 회전 전). null이면 사진 전체.
+   * 자른 뒤 배경을 지우면 잘린 영역만 처리하므로 마스크도 그 영역만 덮는다. 바깥은 투명으로 본다.
+   */
+  maskRect: CropRect | null;
   /** 잘라낼 영역(원본 좌표, 회전 전). null이면 자르지 않는다. */
   crop: CropRect | null;
   /** 목록에 표시할 미리보기 object URL */

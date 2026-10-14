@@ -17,6 +17,7 @@ function emptySlot(index: number): Slot {
     rotation: 0,
     blurRegions: [],
     mask: null,
+    maskRect: null,
     crop: null,
     preview: null,
   };

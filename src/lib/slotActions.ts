@@ -32,6 +32,7 @@ export async function setSlotImage(index: number, image: ImageBitmap) {
     rotation: 0,
     blurRegions: [],
     mask: null,
+    maskRect: null,
     crop: null,
   });
   void suggestItemName(image);
@@ -79,6 +80,7 @@ export async function clearSlot(index: number) {
     rotation: 0,
     blurRegions: [],
     mask: null,
+    maskRect: null,
     crop: null,
   });
 }

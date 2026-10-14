@@ -11,9 +11,12 @@ export interface ViewTransform {
   offsetY: number;
   /** 0 / 90 / 180 / 270 */
   rotation: number;
-  /** 회전 전 원본 크기 */
+  /** 화면에 보이는 영역의 회전 전 크기 (자른 상태면 자른 영역 크기) */
   imageWidth: number;
   imageHeight: number;
+  /** 화면에 보이는 영역의 원본 기준 좌상단 (자른 상태면 자른 영역 위치, 아니면 0) */
+  originX: number;
+  originY: number;
 }
 
 export interface Point {
@@ -26,20 +29,32 @@ export function screenToImage(t: ViewTransform, screenX: number, screenY: number
   const rx = (screenX - t.offsetX) / t.scale;
   const ry = (screenY - t.offsetY) / t.scale;
 
+  let x: number;
+  let y: number;
   switch (((t.rotation % 360) + 360) % 360) {
     case 90:
-      return { x: ry, y: t.imageHeight - rx };
+      x = ry;
+      y = t.imageHeight - rx;
+      break;
     case 180:
-      return { x: t.imageWidth - rx, y: t.imageHeight - ry };
+      x = t.imageWidth - rx;
+      y = t.imageHeight - ry;
+      break;
     case 270:
-      return { x: t.imageWidth - ry, y: rx };
+      x = t.imageWidth - ry;
+      y = rx;
+      break;
     default:
-      return { x: rx, y: ry };
+      x = rx;
+      y = ry;
   }
+  return { x: x + t.originX, y: y + t.originY };
 }
 
 /** 회전 전 원본 이미지 좌표 → 화면 좌표 */
-export function imageToScreen(t: ViewTransform, x: number, y: number): Point {
+export function imageToScreen(t: ViewTransform, imageX: number, imageY: number): Point {
+  const x = imageX - t.originX;
+  const y = imageY - t.originY;
   let rx: number;
   let ry: number;
 
@@ -68,11 +83,18 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** 두 점을 원본 이미지 범위 안의 사각형으로 정규화한다. */
-export function normalizeRect(a: Point, b: Point, imageWidth: number, imageHeight: number) {
-  const x1 = clamp(Math.min(a.x, b.x), 0, imageWidth);
-  const y1 = clamp(Math.min(a.y, b.y), 0, imageHeight);
-  const x2 = clamp(Math.max(a.x, b.x), 0, imageWidth);
-  const y2 = clamp(Math.max(a.y, b.y), 0, imageHeight);
+export interface Bounds {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 두 점을 bounds(원본 좌표) 안의 사각형으로 정규화한다. */
+export function normalizeRect(a: Point, b: Point, bounds: Bounds) {
+  const x1 = clamp(Math.min(a.x, b.x), bounds.x, bounds.x + bounds.w);
+  const y1 = clamp(Math.min(a.y, b.y), bounds.y, bounds.y + bounds.h);
+  const x2 = clamp(Math.max(a.x, b.x), bounds.x, bounds.x + bounds.w);
+  const y2 = clamp(Math.max(a.y, b.y), bounds.y, bounds.y + bounds.h);
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }

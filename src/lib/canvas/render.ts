@@ -25,8 +25,10 @@ export function renderSlot(
   applyBlurRegions(ctx, slot.blurRegions);
 
   if (slot.mask) {
+    // 마스크 영역 바깥은 그려지지 않으므로 destination-in에 의해 투명해진다.
+    const area = slot.maskRect ?? { x: 0, y: 0, w: canvas.width, h: canvas.height };
     ctx.globalCompositeOperation = "destination-in";
-    ctx.drawImage(slot.mask, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(slot.mask, area.x, area.y, area.w, area.h);
     ctx.globalCompositeOperation = "source-over";
   }
 

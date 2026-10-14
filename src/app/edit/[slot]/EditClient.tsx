@@ -71,7 +71,8 @@ export default function EditClient({ index }: { index: number }) {
   });
 
   const [brushMode, setBrushMode] = useState<BrushMode>("erase");
-  const [brushSize, setBrushSize] = useState(70);
+  /** 화면 px 기준 반지름. 확대할수록 원본 기준으로는 가늘어져 세밀한 보정이 쉬워진다. */
+  const [brushSize, setBrushSize] = useState(24);
   const [brushCursor, setBrushCursor] = useState<Point | null>(null);
   const [brushUndoCount, setBrushUndoCount] = useState(0);
   const canvasHandleRef = useRef<EditCanvasHandle>(null);
@@ -110,6 +111,9 @@ export default function EditClient({ index }: { index: number }) {
 
   const regions = slot.blurRegions;
   const busy = progress !== null;
+  const fullBounds = { x: 0, y: 0, w: slot.width, h: slot.height };
+  /** 배경 제거·개인정보 가리기는 자른 영역 안에서만 작업한다. */
+  const editBounds = slot.crop ?? fullBounds;
 
   async function updateRegions(next: BlurRegion[]) {
     await commitSlot(index, { blurRegions: next });
@@ -120,7 +124,7 @@ export default function EditClient({ index }: { index: number }) {
     setDraft(null);
     if (!current || !slot) return;
 
-    const rect = normalizeRect(current.start, current.current, slot.width, slot.height);
+    const rect = normalizeRect(current.start, current.current, editBounds);
     if (rect.w < MIN_REGION_SIZE || rect.h < MIN_REGION_SIZE) return;
 
     const region: BlurRegion = { id: uid("blur"), ...rect, type: tool, strength };
@@ -145,7 +149,7 @@ export default function EditClient({ index }: { index: number }) {
     setDraft(null);
     if (!current || !slot) return;
 
-    const rect = normalizeRect(current.start, current.current, slot.width, slot.height);
+    const rect = normalizeRect(current.start, current.current, fullBounds);
     if (rect.w < MIN_REGION_SIZE || rect.h < MIN_REGION_SIZE) return;
     await commitSlot(index, { crop: rect });
   }
@@ -155,9 +159,12 @@ export default function EditClient({ index }: { index: number }) {
     setError(null);
     setProgress({ phase: "download", ratio: 0 });
     try {
-      const mask = await createBackgroundMask(slot.image, modelId, setProgress);
-      const crop = computeSubjectCrop(mask, slot.width, slot.height);
-      await commitSlot(index, { mask, crop });
+      // 잘라둔 영역이 있으면 그 영역만 모델에 넣는다.
+      const region = slot.crop ?? fullBounds;
+      const mask = await createBackgroundMask(slot.image, modelId, setProgress, region);
+      // 사용자가 직접 자른 영역은 그대로 두고, 자르지 않았을 때만 피사체에 맞춰 자동으로 자른다.
+      const crop = slot.crop ?? computeSubjectCrop(mask, region);
+      await commitSlot(index, { mask, maskRect: region, crop });
       resetBrushUndo();
       // 배경이 빠진 그림으로 품목명을 다시 추정한다 (비어 있을 때만 채운다).
       void suggestItemNameFromSlot(index);
@@ -174,16 +181,22 @@ export default function EditClient({ index }: { index: number }) {
     setBrushUndoCount(0);
   }
 
-  /** 원본 이미지 픽셀 반지름을 마스크 캔버스 픽셀 반지름으로 바꾼다 (마스크는 최대 1024px로 축소돼 있다). */
+  /** 마스크가 덮는 원본 영역 */
+  const maskArea = slot.maskRect ?? fullBounds;
+
+  /** 원본 이미지 좌표를 마스크 캔버스 좌표로 바꾼다 (마스크는 maskArea만 덮고 최대 1024px로 축소돼 있다). */
   function toMaskPoint(point: Point): Point | null {
     if (!slot.mask) return null;
-    const scale = slot.mask.width / slot.width;
-    return { x: point.x * scale, y: point.y * scale };
+    const scale = slot.mask.width / maskArea.w;
+    return { x: (point.x - maskArea.x) * scale, y: (point.y - maskArea.y) * scale };
   }
 
+  /** 화면 px 브러시 반지름 → 원본 px → 마스크 px */
   function maskRadius(): number {
-    if (!slot.mask) return brushSize;
-    return brushSize * (slot.mask.width / slot.width);
+    const scale = canvasHandleRef.current?.getTransform()?.scale ?? 1;
+    const imageRadius = brushSize / scale;
+    if (!slot.mask) return imageRadius;
+    return imageRadius * (slot.mask.width / maskArea.w);
   }
 
   function handleBrushDown(point: Point) {
@@ -220,11 +233,87 @@ export default function EditClient({ index }: { index: number }) {
     await commitSlot(index, { mask: slot.mask });
   }
 
+  /** 그리던 중 두 손가락 확대로 바뀌면 방금 찍힌 획과 그리던 사각형을 취소한다. */
+  async function cancelInteraction() {
+    setDraft(null);
+    if (!paintingRef.current) return;
+    paintingRef.current = false;
+    lastPaintPointRef.current = null;
+    await undoBrush();
+  }
+
   async function undoBrush() {
     const snapshot = brushUndoStackRef.current.pop();
     setBrushUndoCount(brushUndoStackRef.current.length);
     if (!snapshot) return;
     await commitSlot(index, { mask: snapshot });
+  }
+
+  /** 모델 선택 + 배경 지우기 버튼. 배경을 지운 뒤에는 접어 두어 캔버스 공간을 확보한다. */
+  function renderBackgroundControls() {
+    return (
+      <>
+        <p className="mt-2 text-xs text-slate-500">
+          피사체만 남기고 배경을 지웁니다. 모델은 처음 한 번만 내려받고 이후에는 저장돼 있어
+          오프라인에서도 동작합니다.
+        </p>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {(Object.values(MODELS) as (typeof MODELS)[ModelId][]).map((spec) => (
+            <button
+              key={spec.id}
+              type="button"
+              disabled={busy}
+              onClick={() => setModelId(spec.id)}
+              className={`rounded-lg border-2 px-3 py-2 text-left transition disabled:opacity-50 ${
+                modelId === spec.id
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 text-slate-600"
+              }`}
+            >
+              <span className="block text-sm font-semibold">{spec.label}</span>
+              <span
+                className={`block text-[11px] ${
+                  modelId === spec.id ? "text-white/70" : "text-slate-500"
+                }`}
+              >
+                {cached[spec.id] ? "받아둠 · 바로 실행" : spec.description}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void handleRemoveBackground()}
+            disabled={busy}
+            className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+          >
+            {progress ? progressLabel(progress) : slot.mask ? "다시 처리" : "배경 지우기"}
+          </button>
+          {slot.mask && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void commitSlot(index, { mask: null, maskRect: null })}
+              className="rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-600 disabled:opacity-40"
+            >
+              되돌리기
+            </button>
+          )}
+        </div>
+
+        {progress?.phase === "download" && (
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full bg-slate-900 transition-all"
+              style={{ width: `${Math.round(progress.ratio * 100)}%` }}
+            />
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
@@ -243,11 +332,14 @@ export default function EditClient({ index }: { index: number }) {
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 bg-slate-200 p-2">
+      <div className="min-h-0 flex-1 bg-slate-200 p-1">
         <EditCanvas
           ref={canvasHandleRef}
           slot={slot}
+          applyCrop={tab !== "crop"}
           cursor={tab === "privacy" || tab === "crop" ? "crosshair" : slot.mask ? "none" : "default"}
+          panWithSinglePointer={tab === "background" && !slot.mask}
+          onGestureStart={() => void cancelInteraction()}
           onPointerDown={(point) => {
             if (tab === "privacy" || tab === "crop") setDraft({ start: point, current: point });
             else if (tab === "background") handleBrushDown(point);
@@ -277,7 +369,7 @@ export default function EditClient({ index }: { index: number }) {
                   {draft && (
                     <div
                       style={(() => {
-                        const rect = normalizeRect(draft.start, draft.current, slot.width, slot.height);
+                        const rect = normalizeRect(draft.start, draft.current, editBounds);
                         return screenRect(transform, rect.x, rect.y, rect.w, rect.h);
                       })()}
                       className="pointer-events-none absolute rounded-sm border-2 border-dashed border-amber-500 bg-amber-300/25"
@@ -288,7 +380,7 @@ export default function EditClient({ index }: { index: number }) {
               {tab === "crop" &&
                 (() => {
                   const activeRect = draft
-                    ? normalizeRect(draft.start, draft.current, slot.width, slot.height)
+                    ? normalizeRect(draft.start, draft.current, fullBounds)
                     : slot.crop;
                   if (!activeRect) return null;
                   return (
@@ -305,7 +397,7 @@ export default function EditClient({ index }: { index: number }) {
                 <div
                   style={(() => {
                     const center = imageToScreen(transform, brushCursor.x, brushCursor.y);
-                    const r = brushSize * transform.scale;
+                    const r = brushSize;
                     return { left: center.x - r, top: center.y - r, width: r * 2, height: r * 2 };
                   })()}
                   className={`pointer-events-none absolute rounded-full border-2 ${
@@ -318,8 +410,8 @@ export default function EditClient({ index }: { index: number }) {
         />
       </div>
 
-      <section className="border-t border-slate-200 bg-white">
-        <div className="flex border-b border-slate-200">
+      <section className="max-h-[45dvh] overflow-y-auto border-t border-slate-200 bg-white">
+        <div className="sticky top-0 z-10 flex border-b border-slate-200 bg-white">
           {(
             [
               { id: "background", label: "배경 제거" },
@@ -343,79 +435,10 @@ export default function EditClient({ index }: { index: number }) {
         </div>
 
         {tab === "background" ? (
-          <div className="px-4 py-4">
-            <p className="text-xs text-slate-500">
-              피사체만 남기고 배경을 지웁니다. 모델은 처음 한 번만 내려받고 이후에는 저장돼 있어
-              오프라인에서도 동작합니다.
-            </p>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {(Object.values(MODELS) as (typeof MODELS)[ModelId][]).map((spec) => (
-                <button
-                  key={spec.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setModelId(spec.id)}
-                  className={`rounded-lg border-2 px-3 py-2 text-left transition disabled:opacity-50 ${
-                    modelId === spec.id
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 text-slate-600"
-                  }`}
-                >
-                  <span className="block text-sm font-semibold">{spec.label}</span>
-                  <span
-                    className={`block text-[11px] ${
-                      modelId === spec.id ? "text-white/70" : "text-slate-500"
-                    }`}
-                  >
-                    {cached[spec.id] ? "받아둠 · 바로 실행" : spec.description}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => void handleRemoveBackground()}
-                disabled={busy}
-                className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
-              >
-                {busy ? progressLabel(progress) : slot.mask ? "다시 처리" : "배경 지우기"}
-              </button>
-              {slot.mask && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void commitSlot(index, { mask: null })}
-                  className="rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-600 disabled:opacity-40"
-                >
-                  되돌리기
-                </button>
-              )}
-            </div>
-
-            {busy && progress.phase === "download" && (
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full bg-slate-900 transition-all"
-                  style={{ width: `${Math.round(progress.ratio * 100)}%` }}
-                />
-              </div>
-            )}
-
-            {error && (
-              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
-            )}
-
+          <div className="px-4 py-3">
             {slot.mask && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="text-xs text-slate-500">
-                  경계가 어긋난 부분을 손으로 보정하세요. 지우개는 배경을 마저 지우고, 복원은 지워진 부분을
-                  되살립니다.
-                </p>
-
-                <div className="mt-3 flex gap-2">
+              <div>
+                <div className="flex gap-2">
                   {(
                     [
                       { id: "erase", label: "지우개" },
@@ -435,29 +458,47 @@ export default function EditClient({ index }: { index: number }) {
                       {option.label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => void undoBrush()}
+                    disabled={brushUndoCount === 0}
+                    className="rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 disabled:opacity-40"
+                  >
+                    보정 취소
+                  </button>
                 </div>
 
-                <label className="mt-3 block">
-                  <span className="text-xs font-medium text-slate-600">브러시 크기 {brushSize}</span>
+                <label className="mt-2 flex items-center gap-3">
+                  <span className="shrink-0 text-xs font-medium text-slate-600">브러시 {brushSize}</span>
                   <input
                     type="range"
-                    min={10}
-                    max={200}
+                    min={4}
+                    max={80}
                     value={brushSize}
                     onChange={(event) => setBrushSize(Number(event.target.value))}
-                    className="mt-1 w-full accent-slate-900"
+                    className="w-full accent-slate-900"
                   />
                 </label>
 
-                <button
-                  type="button"
-                  onClick={() => void undoBrush()}
-                  disabled={brushUndoCount === 0}
-                  className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 disabled:opacity-40"
-                >
-                  보정 취소
-                </button>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  두 손가락으로 벌려 확대하고 움직여 이동하세요. 확대할수록 브러시가 세밀해집니다.
+                </p>
               </div>
+            )}
+
+            {slot.mask ? (
+              <details className="mt-3 border-t border-slate-100 pt-2">
+                <summary className="cursor-pointer py-1 text-xs font-medium text-slate-600">
+                  다시 처리 · 모델 변경
+                </summary>
+                {renderBackgroundControls()}
+              </details>
+            ) : (
+              renderBackgroundControls()
+            )}
+
+            {error && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
             )}
           </div>
         ) : tab === "privacy" ? (
@@ -547,7 +588,15 @@ export default function EditClient({ index }: { index: number }) {
           <div className="px-4 py-4">
             <p className="text-xs text-slate-500">
               결과물에 남길 영역을 드래그로 지정하세요. 지정하지 않으면 사진 전체가 그대로 쓰입니다.
+              배경 제거와 개인정보 가리기는 자른 사진을 기준으로 진행됩니다.
             </p>
+
+            {slot.mask && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                배경을 지운 뒤 자르기 영역을 바꿨다면 배경 제거 탭에서 &lsquo;다시 처리&rsquo;를 눌러 주세요.
+                처리했던 영역 밖은 투명하게 남습니다.
+              </p>
+            )}
 
             <div className="mt-4 flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500">
