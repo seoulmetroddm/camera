@@ -1,4 +1,4 @@
-// 물건 종류 인식 추론 워커. segmentation.worker.js와 같은 얼개를 쓴다.
+// 품목 인식(CLIP 이미지 모델) 추론 워커. segmentation.worker.js와 같은 얼개를 쓴다.
 // (정적 import로 등록 순서를 지키는 이유 등은 그쪽 주석 참고)
 const pendingEvents = [];
 self.onmessage = (event) => {
@@ -20,7 +20,7 @@ function preprocess(bitmap, size, mean, std) {
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("작업용 캔버스를 만들지 못했습니다.");
 
-  // 넘어온 비트맵은 이미 정사각형으로 잘려 있다 (client.ts에서 가운데를 잘라 보낸다).
+  // 넘어온 비트맵은 이미 정사각형으로 맞춰져 있다 (client.ts에서 시점별로 잘라 보낸다).
   context.drawImage(bitmap, 0, 0, size, size);
   const { data } = context.getImageData(0, 0, size, size);
 
@@ -36,25 +36,14 @@ function preprocess(bitmap, size, mean, std) {
   return new ort.Tensor("float32", input, [1, 3, size, size]);
 }
 
-/**
- * 로짓을 확률로 바꾼다.
- * 큰 분류 하나에 ImageNet 클래스 여러 개가 걸리므로(가방 = backpack + purse + mailbag …)
- * 1등만 보내지 않고 1000개 확률을 통째로 넘겨 호출한 쪽에서 분류별로 합산하게 한다.
- */
-function softmax(logits) {
-  let max = -Infinity;
-  for (let i = 0; i < logits.length; i += 1) {
-    if (logits[i] > max) max = logits[i];
-  }
-  const probabilities = new Float32Array(logits.length);
+/** 길이 1로 정규화한다. 품목 설명 벡터와 내적하면 곧 코사인 유사도가 된다. */
+function normalize(values) {
   let sum = 0;
-  for (let i = 0; i < logits.length; i += 1) {
-    const value = Math.exp(logits[i] - max);
-    probabilities[i] = value;
-    sum += value;
-  }
-  for (let i = 0; i < probabilities.length; i += 1) probabilities[i] /= sum;
-  return probabilities;
+  for (let i = 0; i < values.length; i += 1) sum += values[i] * values[i];
+  const norm = Math.sqrt(sum) || 1;
+  const out = new Float32Array(values.length);
+  for (let i = 0; i < values.length; i += 1) out[i] = values[i] / norm;
+  return out;
 }
 
 async function getSession(bytes) {
@@ -79,9 +68,13 @@ async function handleMessage(event) {
     bitmap.close();
 
     const outputs = await activeSession.run({ [activeSession.inputNames[0]]: tensor });
-    const probabilities = softmax(outputs[activeSession.outputNames[0]].data);
+    // CLIP 이미지 모델의 출력 이름은 image_embeds다. 다른 이름이면 첫 출력을 쓴다.
+    const name = activeSession.outputNames.includes("image_embeds")
+      ? "image_embeds"
+      : activeSession.outputNames[0];
+    const embedding = normalize(outputs[name].data);
 
-    self.postMessage({ id, type: "done", probabilities }, [probabilities.buffer]);
+    self.postMessage({ id, type: "done", embedding }, [embedding.buffer]);
   } catch (error) {
     bitmap.close();
     self.postMessage({

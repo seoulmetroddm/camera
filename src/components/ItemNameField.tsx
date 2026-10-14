@@ -1,5 +1,6 @@
 "use client";
 
+import { CLASSIFIER_MODEL } from "@/lib/classification/models";
 import { useAppStore } from "@/lib/store";
 
 /**
@@ -10,6 +11,7 @@ import { useAppStore } from "@/lib/store";
 export default function ItemNameField() {
   const itemName = useAppStore((s) => s.itemName);
   const candidates = useAppStore((s) => s.itemNameCandidates);
+  const status = useAppStore((s) => s.itemNameStatus);
   const setMeta = useAppStore((s) => s.setMeta);
 
   return (
@@ -23,6 +25,14 @@ export default function ItemNameField() {
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-900"
         />
       </label>
+
+      {status && (
+        <p className="mt-2 text-[11px] text-slate-500">
+          {status.phase === "download"
+            ? `품목 인식 모델 내려받는 중 ${Math.round(status.ratio * 100)}% (처음 한 번만, 약 ${CLASSIFIER_MODEL.megabytes}MB)`
+            : "사진 속 물건을 인식하는 중…"}
+        </p>
+      )}
 
       {candidates.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">

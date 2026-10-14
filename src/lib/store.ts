@@ -23,6 +23,8 @@ function emptySlot(index: number): Slot {
   };
 }
 
+export type ItemNameStatus = { phase: "download"; ratio: number } | { phase: "infer" } | null;
+
 // 배치를 바꿔도 이미 찍은 사진이 사라지지 않도록 슬롯은 항상 최대 개수를 유지하고,
 // 화면에서는 현재 배치에 필요한 만큼만 보여준다.
 const initialSlots = () => Array.from({ length: MAX_SLOTS }, (_, i) => emptySlot(i));
@@ -37,6 +39,8 @@ interface AppState {
   itemNameIsAuto: boolean;
   /** 마지막으로 인식한 사진의 품목 후보(점수 높은 순). 품목명 칸 아래 버튼으로 보여준다. */
   itemNameCandidates: string[];
+  /** 품목 인식 진행 상태. 모델(약 89MB)을 처음 받는 동안 진행률을 보여주기 위해 둔다. */
+  itemNameStatus: ItemNameStatus;
   layout: LayoutId;
   slots: Slot[];
   background: BackgroundMode;
@@ -48,6 +52,7 @@ interface AppState {
   setMeta: (patch: { itemName?: string }) => void;
   setAutoItemName: (itemName: string) => void;
   setItemNameCandidates: (candidates: string[]) => void;
+  setItemNameStatus: (status: ItemNameStatus) => void;
   setLayout: (layout: LayoutId) => void;
   replaceSlot: (index: number, slot: Slot) => void;
   swapSlots: (a: number, b: number) => void;
@@ -63,6 +68,7 @@ export const useAppStore = create<AppState>((set) => ({
   itemName: "",
   itemNameIsAuto: true,
   itemNameCandidates: [],
+  itemNameStatus: null,
   layout: "1x1",
   slots: initialSlots(),
   background: "white",
@@ -75,6 +81,7 @@ export const useAppStore = create<AppState>((set) => ({
   setMeta: (patch) => set("itemName" in patch ? { ...patch, itemNameIsAuto: false } : patch),
   setAutoItemName: (itemName) => set({ itemName, itemNameIsAuto: true }),
   setItemNameCandidates: (itemNameCandidates) => set({ itemNameCandidates }),
+  setItemNameStatus: (itemNameStatus) => set({ itemNameStatus }),
   setLayout: (layout) => set({ layout }),
 
   replaceSlot: (index, slot) =>
