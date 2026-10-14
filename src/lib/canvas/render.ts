@@ -22,7 +22,7 @@ export function renderSlot(
   const ctx = context2d(canvas);
   ctx.drawImage(slot.image, 0, 0);
 
-  applyBlurRegions(ctx, slot.blurRegions);
+  applyBlurRegions(ctx, slot.blurRegions, slot.image);
 
   if (slot.mask) {
     // 마스크 영역 바깥은 그려지지 않으므로 destination-in에 의해 투명해진다.

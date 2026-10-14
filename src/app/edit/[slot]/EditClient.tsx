@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import EditCanvas, { type EditCanvasHandle } from "@/components/EditCanvas";
-import { canvasFilterSupported } from "@/lib/canvas/blur";
 import { imageToScreen, normalizeRect, type Point, type ViewTransform } from "@/lib/canvas/coords";
 import {
   type BrushMode,
@@ -64,7 +63,6 @@ export default function EditClient({ index }: { index: number }) {
   const [strength, setStrength] = useState(6);
   const [draft, setDraft] = useState<{ start: Point; current: Point } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filterOk, setFilterOk] = useState(true);
   const [progress, setProgress] = useState<SegmentationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState<Record<ModelId, boolean>>({
@@ -81,10 +79,6 @@ export default function EditClient({ index }: { index: number }) {
   const paintingRef = useRef(false);
   const lastPaintPointRef = useRef<Point | null>(null);
   const brushUndoStackRef = useRef<HTMLCanvasElement[]>([]);
-
-  useEffect(() => {
-    setFilterOk(canvasFilterSupported());
-  }, []);
 
   const refreshCached = useCallback(async () => {
     setCached({
@@ -547,12 +541,6 @@ export default function EditClient({ index }: { index: number }) {
                 className="mt-1 w-full accent-slate-900"
               />
             </label>
-
-            {!filterOk && (
-              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                이 브라우저는 블러를 지원하지 않아 모자이크로 대신 처리됩니다.
-              </p>
-            )}
 
             <div className="mt-4 flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500">가린 영역 {regions.length}개</span>
