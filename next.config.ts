@@ -11,7 +11,7 @@ const basePath = process.env.NEXT_BASE_PATH ?? "";
  * 화면에 표시할 빌드 정보. 휴대폰에 옛 화면이 남아 있는지 바로 확인할 수 있게 한다.
  * 버전 숫자는 커밋 메시지의 "camera vX.Y"와 맞춰 직접 올린다.
  */
-const APP_VERSION = "2.10";
+const APP_VERSION = "2.11";
 
 const nextConfig: NextConfig = {
   // 서버가 필요 없는 완전 정적 사이트로 빌드한다 (무료 호스팅 배포용)

@@ -22,7 +22,7 @@ import { MODELS, type ModelId } from "@/lib/segmentation/models";
 import { commitSlot, rotateSlot, suggestItemNameFromSlot } from "@/lib/slotActions";
 import { useAppStore } from "@/lib/store";
 import { uid } from "@/lib/uid";
-import type { BlurRegion } from "@/types";
+import type { BlurRegion, CropRect, Slot } from "@/types";
 
 /** 원본 기준 이 정도보다 작으면 실수로 톡 친 것으로 보고 무시한다. */
 const MIN_REGION_SIZE = 12;
@@ -41,6 +41,26 @@ function screenRect(transform: ViewTransform, x: number, y: number, w: number, h
     width: Math.abs(b.x - a.x),
     height: Math.abs(b.y - a.y),
   };
+}
+
+/** 두 영역이 (반올림 오차를 빼고) 같은지 */
+function sameRect(a: CropRect, b: CropRect): boolean {
+  return (
+    Math.abs(a.x - b.x) < 0.5 &&
+    Math.abs(a.y - b.y) < 0.5 &&
+    Math.abs(a.w - b.w) < 0.5 &&
+    Math.abs(a.h - b.h) < 0.5
+  );
+}
+
+/**
+ * 배경 제거가 지금 자른 영역 기준이 아닌지.
+ * 배경을 지운 뒤에 자르기 영역을 바꾸거나 초기화하면, 마스크는 예전 영역으로 만든 그대로 남는다.
+ */
+function isMaskStale(slot: Slot | undefined): boolean {
+  if (!slot?.image || !slot.mask) return false;
+  const full = { x: 0, y: 0, w: slot.width, h: slot.height };
+  return !sameRect(slot.maskRect ?? full, slot.crop ?? full);
 }
 
 function progressLabel(progress: SegmentationProgress): string {
@@ -91,6 +111,21 @@ export default function EditClient({ index }: { index: number }) {
   useEffect(() => {
     void refreshCached();
   }, [refreshCached]);
+
+  // 배경 제거 탭에 들어왔는데 자르기 영역이 바뀌어 있으면, 잘린 사진 기준으로 자동으로 다시 처리한다.
+  // 같은 상태에서 실패했을 때 무한히 반복하지 않도록 한 번 시도한 상태는 기억해 둔다.
+  const staleKey = isMaskStale(slot) ? JSON.stringify([slot?.crop, slot?.maskRect]) : null;
+  const triedStaleKeyRef = useRef<string | null>(null);
+  const removeBackgroundRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => {
+    removeBackgroundRef.current = handleRemoveBackground;
+  });
+  useEffect(() => {
+    if (tab !== "background" || !staleKey || progress) return;
+    if (triedStaleKeyRef.current === staleKey) return;
+    triedStaleKeyRef.current = staleKey;
+    void removeBackgroundRef.current?.();
+  }, [tab, staleKey, progress]);
 
   if (!slot?.image) {
     return (
@@ -157,10 +192,20 @@ export default function EditClient({ index }: { index: number }) {
     setProgress({ phase: "download", ratio: 0 });
     try {
       // 잘라둔 영역이 있으면 그 영역만 모델에 넣는다.
-      const region = slot.crop ?? fullBounds;
-      const mask = await createBackgroundMask(slot.image, modelId, setProgress, region);
-      // 사용자가 직접 자른 영역은 그대로 두고, 자르지 않았을 때만 피사체에 맞춰 자동으로 자른다.
-      const crop = slot.crop ?? computeSubjectCrop(mask, region);
+      let region = slot.crop ?? fullBounds;
+      let mask = await createBackgroundMask(slot.image, modelId, setProgress, region);
+      let crop = slot.crop;
+      // 처음 지울 때 자르지 않았으면 피사체에 맞춰 자동으로 자르고, 잘린 사진으로 한 번 더 처리한다.
+      // 피사체가 모델 입력에서 크게 잡혀 경계가 더 정확해지고, 마스크도 지금 자른 영역 기준이 된다.
+      // (이미 지운 뒤 자르기를 초기화했다면 사용자가 전체 사진을 원한 것이므로 다시 자르지 않는다)
+      if (!crop && !slot.mask) {
+        const subject = computeSubjectCrop(mask, region);
+        if (subject) {
+          crop = subject;
+          region = subject;
+          mask = await createBackgroundMask(slot.image, modelId, setProgress, region);
+        }
+      }
       await commitSlot(index, { mask, maskRect: region, crop });
       resetBrushUndo();
       // 배경이 빠진 그림으로 품목명을 다시 추정한다 (비어 있을 때만 채운다).
@@ -436,6 +481,12 @@ export default function EditClient({ index }: { index: number }) {
 
         {tab === "background" ? (
           <div className="px-4 py-3">
+            {/* 배경을 지운 뒤에는 처리 버튼이 접혀 있으므로, 자동 재처리 진행 상황은 여기서 보여준다. */}
+            {slot.mask && progress && (
+              <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
+                잘린 사진 기준으로 다시 처리하는 중 · {progressLabel(progress)}
+              </p>
+            )}
             {slot.mask && (
               <div>
                 <div className="flex gap-2">
@@ -587,8 +638,8 @@ export default function EditClient({ index }: { index: number }) {
 
             {slot.mask && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                배경을 지운 뒤 자르기 영역을 바꿨다면 배경 제거 탭에서 &lsquo;다시 처리&rsquo;를 눌러 주세요.
-                처리했던 영역 밖은 투명하게 남습니다.
+                배경을 지운 뒤 자르기 영역을 바꾸면, 배경 제거 탭으로 갈 때 잘린 사진 기준으로 자동으로 다시
+                처리합니다. 손으로 보정한 내용은 다시 해야 합니다.
               </p>
             )}
 
