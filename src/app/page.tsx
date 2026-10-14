@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import AppVersion from "@/components/AppVersion";
 import ItemNameField from "@/components/ItemNameField";
 import LayoutPicker from "@/components/LayoutPicker";
 import { useAppStore } from "@/lib/store";
@@ -26,6 +27,7 @@ export default function HomePage() {
           사진을 찍고 배경 제거·개인정보 가림·여러 장 합치기를 한 번에 끝냅니다. 모든 처리는 이
           기기 안에서만 이뤄지고, 사진은 어디로도 전송되지 않습니다.
         </p>
+        <AppVersion className="mt-2 block" />
       </header>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">

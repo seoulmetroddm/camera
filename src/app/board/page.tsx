@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AppVersion from "@/components/AppVersion";
 import CameraCapture from "@/components/CameraCapture";
 import ItemNameField from "@/components/ItemNameField";
 import LayoutPicker from "@/components/LayoutPicker";
@@ -100,6 +101,8 @@ export default function BoardPage() {
           </button>
         </div>
       </div>
+
+      <AppVersion className="text-center" />
 
       {cameraTarget !== null && (
         <CameraCapture

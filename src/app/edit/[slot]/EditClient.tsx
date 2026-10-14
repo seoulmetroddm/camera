@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import AppVersion from "@/components/AppVersion";
 import EditCanvas, { type EditCanvasHandle } from "@/components/EditCanvas";
 import { imageToScreen, normalizeRect, type Point, type ViewTransform } from "@/lib/canvas/coords";
 import {
@@ -318,7 +319,10 @@ export default function EditClient({ index }: { index: number }) {
         <Link href="/board" className="text-sm text-slate-500 hover:text-slate-900">
           ← 촬영
         </Link>
-        <span className="text-sm font-semibold">{index + 1}번 칸 편집</span>
+        <div className="flex flex-col items-center leading-tight">
+          <span className="text-sm font-semibold">{index + 1}번 칸 편집</span>
+          <AppVersion />
+        </div>
         <button
           type="button"
           onClick={() => router.push("/board")}
