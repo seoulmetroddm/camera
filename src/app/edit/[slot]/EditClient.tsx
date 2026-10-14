@@ -57,7 +57,9 @@ export default function EditClient({ index }: { index: number }) {
   const modelId = useAppStore((state) => state.modelId);
   const setModelId = useAppStore((state) => state.setModelId);
 
-  const [tab, setTab] = useState<Tab>("background");
+  // 자르기 → 배경 제거 → 개인정보 가리기 순서로 작업하도록 자르기 탭에서 시작한다.
+  // 이미 잘라두었으면 다음 단계인 배경 제거부터 보여준다.
+  const [tab, setTab] = useState<Tab>(() => (slot?.crop ? "background" : "crop"));
   const [tool, setTool] = useState<BlurRegion["type"]>("blur");
   const [strength, setStrength] = useState(6);
   const [draft, setDraft] = useState<{ start: Point; current: Point } | null>(null);
@@ -414,9 +416,9 @@ export default function EditClient({ index }: { index: number }) {
         <div className="sticky top-0 z-10 flex border-b border-slate-200 bg-white">
           {(
             [
+              { id: "crop", label: "자르기" },
               { id: "background", label: "배경 제거" },
               { id: "privacy", label: "개인정보 가리기" },
-              { id: "crop", label: "자르기" },
             ] as const
           ).map((item) => (
             <button
