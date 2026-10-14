@@ -54,17 +54,19 @@ export async function suggestItemNameFromSlot(index: number) {
 }
 
 /**
- * 찍힌 물건의 큰 분류를 추정해 품목명을 채운다.
+ * 찍힌 물건의 큰 분류를 추정해 품목명을 채우고, 골라 쓸 후보도 갱신한다.
  *
  * 사용자가 직접 입력한 적이 없는 동안(itemNameIsAuto)에는 재촬영할 때마다
- * 새로 추정한 값으로 덮어써도 된다. 실패해도 촬영 흐름을 막지 않도록 별도로 떼어냈다.
+ * 새로 추정한 값으로 덮어써도 된다. 후보는 직접 입력했더라도 계속 보여준다.
+ * 실패해도 촬영 흐름을 막지 않도록 별도로 떼어냈다.
  */
 async function suggestItemName(image: ImageBitmap) {
   try {
-    const category = await classifySubject(image);
-    if (!category) return;
-    if (!useAppStore.getState().itemNameIsAuto) return;
-    useAppStore.getState().setAutoItemName(category);
+    const result = await classifySubject(image);
+    if (!result) return;
+    const store = useAppStore.getState();
+    store.setItemNameCandidates(result.candidates);
+    if (result.best && store.itemNameIsAuto) store.setAutoItemName(result.best);
   } catch {
     // 인식 실패는 무시한다. 품목명은 사용자가 직접 입력할 수 있다.
   }

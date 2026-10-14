@@ -139,6 +139,10 @@ const CATEGORY_LABELS: Record<string, string[]> = {
     "knee pad",
   ],
   자물쇠: ["padlock", "combination lock"],
+  화장품: ["perfume", "lipstick", "lotion", "sunscreen", "face powder", "hair spray"],
+  인형: ["teddy"],
+  라이터: ["lighter"],
+  쌍안경: ["binoculars"],
 };
 
 /** ImageNet 출력 인덱스 -> 큰 분류. 분류에 안 넣은 클래스는 null. */
@@ -161,33 +165,40 @@ function totalsByCategory(probabilities: Float32Array): Map<string, number> {
   return totals;
 }
 
+export interface CategoryScore {
+  category: string;
+  score: number;
+}
+
 /**
- * 여러 배율로 본 결과를 모아 큰 분류 하나를 고른다.
+ * 여러 시점(전체·가운데·확대)으로 본 결과를 모아 큰 분류별 점수를 높은 순으로 돌려준다.
  *
  * 분류별로 확률을 합산하는 이유: 큰 분류 하나에 ImageNet 클래스가 여러 개 걸려 있어서
  * (가방 = backpack + purse + mailbag …) 1등 클래스만 보면 확률이 흩어진 만큼 손해를 본다.
  *
- * 배율끼리는 평균이 아니라 최대값을 쓴다. 평균을 내면 한쪽 배율이 물건을 못 잡았을 때
+ * 시점끼리는 평균이 아니라 최대값을 쓴다. 평균을 내면 한쪽 시점이 물건을 못 잡았을 때
  * (넓게 찍힌 물건을 확대해 천 질감만 보이는 경우) 제대로 본 쪽까지 같이 깎인다.
- *
- * 최대값이 minScore에 못 미치면 확신이 없다고 보고 null.
  */
-export function categorize(probabilitiesPerCrop: Float32Array[], minScore: number): string | null {
+export function rankCategories(probabilitiesPerView: Float32Array[]): CategoryScore[] {
   const best = new Map<string, number>();
-  for (const probabilities of probabilitiesPerCrop) {
+  for (const probabilities of probabilitiesPerView) {
     for (const [category, score] of totalsByCategory(probabilities)) {
       if (score > (best.get(category) ?? 0)) best.set(category, score);
     }
   }
+  return [...best]
+    .map(([category, score]) => ({ category, score }))
+    .sort((a, b) => b.score - a.score);
+}
 
-  let winner: string | null = null;
-  let winnerScore = 0;
-  for (const [category, score] of best) {
-    if (score > winnerScore) {
-      winnerScore = score;
-      winner = category;
-    }
-  }
-
-  return winnerScore >= minScore ? winner : null;
+/**
+ * 순위에서 품목명으로 자동으로 채울 분류 하나를 고른다.
+ * 1등 점수가 minScore에 못 미치거나, 2등과 차이가 minLead배가 안 되면 확신이 없다고 보고 null.
+ * (가방 0.31 / 지갑 0.29처럼 박빙이면 틀릴 확률이 높아, 자동으로 채우기보다 후보로만 보여준다.)
+ */
+export function pickCategory(ranked: CategoryScore[], minScore: number, minLead: number): string | null {
+  const [first, second] = ranked;
+  if (!first || first.score < minScore) return null;
+  if (second && first.score < second.score * minLead) return null;
+  return first.category;
 }

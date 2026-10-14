@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CameraCapture from "@/components/CameraCapture";
+import ItemNameField from "@/components/ItemNameField";
 import LayoutPicker from "@/components/LayoutPicker";
 import SlotGrid from "@/components/SlotGrid";
 import { clearSlot, rotateSlot, setSlotImage } from "@/lib/slotActions";
@@ -69,6 +70,13 @@ export default function BoardPage() {
         <p className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-700">
           {swapFrom + 1}번 칸을 옮기는 중입니다. 옮길 자리를 누르세요.
         </p>
+      )}
+
+      {/* 촬영 직후 자동 인식 결과를 이 화면에서 바로 확인·수정할 수 있게 한다. */}
+      {filled > 0 && (
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <ItemNameField />
+        </section>
       )}
 
       <details className="rounded-2xl bg-white p-4 shadow-sm">

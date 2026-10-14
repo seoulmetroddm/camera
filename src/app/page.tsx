@@ -1,14 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import ItemNameField from "@/components/ItemNameField";
 import LayoutPicker from "@/components/LayoutPicker";
 import { useAppStore } from "@/lib/store";
 
 export default function HomePage() {
   const router = useRouter();
-  const itemName = useAppStore((s) => s.itemName);
   const layout = useAppStore((s) => s.layout);
-  const setMeta = useAppStore((s) => s.setMeta);
   const setLayout = useAppStore((s) => s.setLayout);
 
   return (
@@ -34,15 +33,9 @@ export default function HomePage() {
         <p className="mt-1 text-xs text-slate-500">
           저장할 파일 이름에 사용됩니다. 비워두면 사진을 찍은 뒤 물건 종류를 자동으로 인식해 채워드립니다.
         </p>
-        <label className="mt-4 block">
-          <span className="text-xs font-medium text-slate-600">품목명</span>
-          <input
-            value={itemName}
-            onChange={(e) => setMeta({ itemName: e.target.value })}
-            placeholder="예: 검정 지갑"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-900"
-          />
-        </label>
+        <div className="mt-4">
+          <ItemNameField />
+        </div>
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">

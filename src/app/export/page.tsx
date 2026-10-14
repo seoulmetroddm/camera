@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import ItemNameField from "@/components/ItemNameField";
 import { composeGrid, renderSlot } from "@/lib/canvas/render";
 import { canvasToBlob } from "@/lib/canvas/util";
 import { buildFileName, downloadBlob } from "@/lib/filename";
@@ -201,7 +202,11 @@ export default function ExportPage() {
           </>
         )}
 
-        <p className="mt-6 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="mt-6">
+          <ItemNameField />
+        </div>
+
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
           저장될 파일명: <span className="font-medium text-slate-900">{fileName}</span>
         </p>
       </section>
