@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import PersistGate from "@/components/PersistGate";
 import "./globals.css";
 
 // GitHub Pages 서브경로(/camera) 배포 시에도 아이콘이 제대로 뜨도록 basePath를 붙인다.
@@ -20,7 +21,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <PersistGate>{children}</PersistGate>
+      </body>
     </html>
   );
 }

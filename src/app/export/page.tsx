@@ -7,6 +7,7 @@ import ItemNameField from "@/components/ItemNameField";
 import { composeGrid, renderSlot } from "@/lib/canvas/render";
 import { canvasToBlob } from "@/lib/canvas/util";
 import { buildFileName, downloadBlob } from "@/lib/filename";
+import { discardSaved } from "@/lib/persist";
 import { useAppStore } from "@/lib/store";
 import { layoutSpec } from "@/types";
 
@@ -77,6 +78,7 @@ export default function ExportPage() {
   }
 
   function handleNewCase() {
+    void discardSaved();
     resetAll();
     router.push("/");
   }

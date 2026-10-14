@@ -2,6 +2,7 @@ import type { Slot } from "@/types";
 import { renderSlot } from "./canvas/render";
 import { classifySubject } from "./classification/client";
 import { toPreviewUrl } from "./image";
+import { persistNow } from "./persist";
 import { useAppStore } from "./store";
 
 /**
@@ -35,6 +36,7 @@ export async function setSlotImage(index: number, image: ImageBitmap) {
     maskRect: null,
     crop: null,
   });
+  persistNow();
   void suggestItemName(image);
 }
 
