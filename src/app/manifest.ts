@@ -19,8 +19,8 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#f1f5f9",
     theme_color: "#0f172a",
     icons: [
-      { src: `${basePath}/icon.svg`, sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: `${basePath}/icon.svg`, sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+      // 로고가 가장자리까지 차 있어 maskable로 쓰면 잘리므로 any로만 등록한다.
+      { src: `${basePath}/icon.png`, sizes: "256x256", type: "image/png", purpose: "any" },
     ],
   };
 }
