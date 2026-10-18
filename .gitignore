@@ -42,3 +42,6 @@ next-env.d.ts
 
 # onnxruntime wasm (postinstall로 생성됨)
 /public/ort
+
+# 원본 이미지 보관용 (앱에서는 public/ 아래 변환본을 사용)
+/img
